@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ConvexClientProvider } from "./ConvexClientProvider";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
+import ConvexClientProvider from "./ConvexClientProvider";
+import SyncUserWithConvex from "@/components/syncUser";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +39,7 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
+              <SyncUserWithConvex />
               {children}
             </ThemeProvider>
           </ConvexClientProvider>
