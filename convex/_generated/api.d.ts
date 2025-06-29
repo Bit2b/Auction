@@ -13,6 +13,8 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as auctions from "../auctions.js";
+import type * as teams from "../teams.js";
 import type * as users from "../users.js";
 
 /**
@@ -24,6 +26,8 @@ import type * as users from "../users.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  auctions: typeof auctions;
+  teams: typeof teams;
   users: typeof users;
 }>;
 export declare const api: FilterApi<
