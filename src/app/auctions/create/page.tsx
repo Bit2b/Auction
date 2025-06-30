@@ -115,7 +115,7 @@ export default function CreateAuctionPage() {
         description: `${formData.auctionName} is now ready for participants`,
         action: {
           label: 'View Auction',
-          onClick: () => router.push(`/auction/${newAuctionId}`),
+          onClick: () => router.push(`/auctions/${newAuctionId}`),
         },
       })
 
@@ -129,7 +129,7 @@ export default function CreateAuctionPage() {
       })
 
       // Redirect to auction detail page
-      router.push(`/auction/${newAuctionId}`)
+      router.push(`/auctions/${newAuctionId}`)
     } catch (err) {
       console.error('Error creating auction:', err)
 

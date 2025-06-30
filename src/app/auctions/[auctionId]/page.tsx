@@ -7,20 +7,23 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
-import { CalendarIcon, Users, Coins, User, Clock, ArrowLeft } from 'lucide-react';
+import { CalendarIcon, Users, Coins, User, Clock, ArrowLeft, Settings } from 'lucide-react';
 import { api } from '../../../../convex/_generated/api';
 import { Id } from '../../../../convex/_generated/dataModel';
 
 export default function AuctionViewPage() {
   const router = useRouter();
   const params = useParams();
-  
+
   // Get auctionId from route parameters and cast to proper ID type
   const auctionId = params?.auctionId as Id<'auctions'> | undefined;
 
-  const auction = useQuery(api.auctions.getAuctionById, 
+  const auction = useQuery(api.auctions.getAuctionById,
     auctionId ? { auctionId } : "skip"
   );
+
+  // Get current user - adjust this based on your auth implementation
+  const currentUser = useQuery(api.users.getCurrentUser);
 
   // Format date strings
   const formatDate = (dateString: string) => {
@@ -74,25 +77,35 @@ export default function AuctionViewPage() {
     }
   };
 
+  const handleAdminPanel = () => {
+    if (auctionId) {
+      router.push(`/auctions/${auctionId}/admin`);
+    }
+  };
+
+  // Check if current user is the auctioneer
+  const isAuctioneer = currentUser && auction &&
+    (currentUser.userId === auction.auctioneer);
+
   // Loading state
-  if (auction === undefined) {
+  if (auction === undefined || currentUser === undefined) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto py-8 px-4">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             onClick={() => router.back()}
             className="mb-6 flex items-center gap-2"
           >
             <ArrowLeft size={16} /> Back
           </Button>
-          
+
           <div className="space-y-8">
             <div>
               <Skeleton className="h-12 w-3/4 mb-4" />
               <Skeleton className="h-6 w-32" />
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-6">
                 <Skeleton className="h-48" />
@@ -130,14 +143,27 @@ export default function AuctionViewPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto py-8 px-4">
-        <Button 
-          variant="ghost" 
-          onClick={() => router.back()}
-          className="mb-6 flex items-center gap-2"
-        >
-          <ArrowLeft size={16} /> Back
-        </Button>
-        
+        <div className="flex items-center justify-between mb-6">
+          <Button
+            variant="ghost"
+            onClick={() => router.back()}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft size={16} /> Back
+          </Button>
+
+          {/* Admin Panel Link for Auctioneer */}
+          {isAuctioneer && (
+            <Button
+              variant="outline"
+              onClick={handleAdminPanel}
+              className="flex items-center gap-2 border-primary text-primary hover:bg-primary/10"
+            >
+              <Settings size={16} /> Admin Panel
+            </Button>
+          )}
+        </div>
+
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -145,24 +171,24 @@ export default function AuctionViewPage() {
               <h1 className="text-4xl font-bold text-foreground mb-3">
                 {auction.auctionName}
               </h1>
-              <Badge 
+              <Badge
                 className={`text-sm py-2 px-4 border ${currentStatus.color}`}
                 variant="outline"
               >
                 {currentStatus.label}
               </Badge>
             </div>
-            
-            {auction.status === 'registering' && (
+
+            {auction.status === 'registering' && !isAuctioneer && (
               <div className="flex flex-col sm:flex-row gap-3">
-                <Button 
+                <Button
                   onClick={handleRegisterTeam}
                   size="lg"
                   className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3"
                 >
                   Register as Team
                 </Button>
-                <Button 
+                <Button
                   onClick={handleRegisterPlayer}
                   size="lg"
                   variant="outline"
@@ -173,9 +199,14 @@ export default function AuctionViewPage() {
               </div>
             )}
           </div>
-          
+
           <p className="text-muted-foreground mt-3 text-lg">
             {currentStatus.description}
+            {isAuctioneer && (
+              <span className="ml-2 text-primary font-medium">
+                · You are the auctioneer
+              </span>
+            )}
           </p>
         </div>
 
@@ -188,7 +219,7 @@ export default function AuctionViewPage() {
                 <CalendarIcon size={24} />
                 Schedule
               </h2>
-              
+
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-muted-foreground">
@@ -204,7 +235,7 @@ export default function AuctionViewPage() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Clock size={16} />
@@ -228,11 +259,11 @@ export default function AuctionViewPage() {
                 <Users size={24} />
                 Registered Teams ({auction.teams.length})
               </h2>
-              
+
               {auction.teams.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {auction.teams.map((team, index) => (
-                    <div 
+                    <div
                       key={index}
                       className="p-4 bg-muted/30 rounded-lg border border-border/50"
                     >
@@ -266,19 +297,47 @@ export default function AuctionViewPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Admin Panel Card for Auctioneer */}
+            {isAuctioneer && (
+              <Card className="p-6 border-primary/20 bg-primary/5">
+                <h3 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">
+                  <Settings size={20} />
+                  Auctioneer Panel
+                </h3>
+                <p className="text-muted-foreground mb-4 text-sm">
+                  You are the auctioneer for this auction. Access the admin panel to manage the auction.
+                </p>
+                <Button
+                  onClick={handleAdminPanel}
+                  className="w-full"
+                  size="lg"
+                >
+                  <Settings size={16} className="mr-2" />
+                  Open Admin Panel
+                </Button>
+              </Card>
+            )}
+
             {/* Auction Details Card */}
             <Card className="p-6">
               <h3 className="text-xl font-semibold mb-4">Auction Details</h3>
-              
+
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
                   <User size={20} className="text-muted-foreground mt-0.5" />
                   <div>
                     <div className="text-sm text-muted-foreground">Auctioneer</div>
-                    <div className="font-semibold text-foreground">{auction.auctioneer}</div>
+                    <div className="font-semibold text-foreground flex items-center gap-2">
+                      {auction.auctioneer}
+                      {isAuctioneer && (
+                        <Badge variant="secondary" className="text-xs">
+                          You
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start gap-3">
                   <Coins size={20} className="text-muted-foreground mt-0.5" />
                   <div>
@@ -288,7 +347,7 @@ export default function AuctionViewPage() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start gap-3">
                   <Users size={20} className="text-muted-foreground mt-0.5" />
                   <div>
@@ -299,8 +358,8 @@ export default function AuctionViewPage() {
               </div>
             </Card>
 
-            {/* Registration Card */}
-            {auction.status === 'registering' && (
+            {/* Registration Card - Only show for non-auctioneers */}
+            {auction.status === 'registering' && !isAuctioneer && (
               <Card className="p-6 border-primary/20 bg-primary/5">
                 <h3 className="text-xl font-semibold mb-3 text-primary">
                   Ready to Join?
@@ -309,14 +368,14 @@ export default function AuctionViewPage() {
                   Registration is currently open. Choose how you want to participate in this auction.
                 </p>
                 <div className="space-y-3">
-                  <Button 
+                  <Button
                     onClick={handleRegisterTeam}
                     className="w-full"
                     size="lg"
                   >
                     Register as Team
                   </Button>
-                  <Button 
+                  <Button
                     onClick={handleRegisterPlayer}
                     variant="outline"
                     className="w-full border-primary text-primary hover:bg-primary/10"
@@ -333,11 +392,10 @@ export default function AuctionViewPage() {
               <h3 className="text-lg font-semibold mb-3">Status Information</h3>
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${
-                    auction.status === 'live' ? 'bg-green-500' :
+                  <div className={`w-3 h-3 rounded-full ${auction.status === 'live' ? 'bg-green-500' :
                     auction.status === 'registering' ? 'bg-blue-500' :
-                    auction.status === 'ended' ? 'bg-red-500' : 'bg-yellow-500'
-                  }`}></div>
+                      auction.status === 'ended' ? 'bg-red-500' : 'bg-yellow-500'
+                    }`}></div>
                   <span className="font-medium">{currentStatus.label}</span>
                 </div>
                 <p className="text-sm text-muted-foreground">

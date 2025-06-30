@@ -1,302 +1,205 @@
-// ===== TEAMS MUTATIONS AND QUERIES (teams.ts) =====
-import { mutation, query } from './_generated/server';
-import { v } from 'convex/values';
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 
-// Get all teams
-export const getAllTeams = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query('teams').collect();
+// ==================== TEAM FUNCTIONS ====================
+
+// Create a new team
+export const createTeam = mutation({
+  args: {
+    auctionId: v.id("auctions"),
+    teamName: v.string(),
+    owner: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check if team name already exists in this auction
+    const existingTeam = await ctx.db
+      .query("teams")
+      .withIndex("by_team_name", (q) => q.eq("teamName", args.teamName))
+      .filter((q) => q.eq(q.field("auctionId"), args.auctionId))
+      .first();
+
+    if (existingTeam) {
+      throw new Error("Team name already exists in this auction");
+    }
+
+    const auction = await ctx.db.get(args.auctionId);
+    if (!auction) throw new Error("Auction not found");
+
+    return await ctx.db.insert("teams", {
+      auctionId: args.auctionId,
+      teamName: args.teamName,
+      owner: args.owner,
+      coinsLeft: auction.startingCoin,
+      totalCoins: auction.startingCoin,
+      totalPlayers: 0,
+      playerIds: [],
+    });
   },
 });
 
 // Get team by ID
-export const getTeamById = query({
-  args: { teamId: v.id('teams') },
+export const getTeam = query({
+  args: { teamId: v.id("teams") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.teamId);
   },
 });
 
-// Get teams by auction ID
+// Get all teams in an auction
 export const getTeamsByAuction = query({
-  args: { auctionId: v.id('auctions') },
+  args: { auctionId: v.id("auctions") },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query('teams')
-      .withIndex('by_auction_id', (q) => q.eq('auctionId', args.auctionId))
+      .query("teams")
+      .withIndex("by_auction_id", (q) => q.eq("auctionId", args.auctionId))
       .collect();
   },
 });
 
-// Get teams by owner
-export const getTeamsByOwner = query({
-  args: { owner: v.string() },
+// Get team by owner
+export const getTeamByOwner = query({
+  args: { 
+    owner: v.string(),
+    auctionId: v.optional(v.id("auctions"))
+  },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query('teams')
-      .withIndex('by_owner', (q) => q.eq('owner', args.owner))
-      .collect();
+    let query = ctx.db
+      .query("teams")
+      .withIndex("by_owner", (q) => q.eq("owner", args.owner));
+    
+    if (args.auctionId) {
+      query = query.filter((q) => q.eq(q.field("auctionId"), args.auctionId));
+    }
+    
+    return await query.collect();
   },
 });
 
 // Get team by name
 export const getTeamByName = query({
-  args: { teamName: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query('teams')
-      .withIndex('by_team_name', (q) => q.eq('teamName', args.teamName))
-      .first();
-  },
-});
-
-// Create a new team
-export const createTeam = mutation({
-  args: {
-    auctionId: v.id('auctions'),
+  args: { 
     teamName: v.string(),
-    owner: v.string(),
-    totalCoins: v.number(),
+    auctionId: v.optional(v.id("auctions"))
   },
   handler: async (ctx, args) => {
-    // Check if team name already exists in this auction
-    const existingTeam = await ctx.db
-      .query('teams')
-      .withIndex('by_auction_id', (q) => q.eq('auctionId', args.auctionId))
-      .filter((q) => q.eq(q.field('teamName'), args.teamName))
-      .first();
-
-    if (existingTeam) {
-      throw new Error(`Team name "${args.teamName}" already exists in this auction`);
+    let query = ctx.db
+      .query("teams")
+      .withIndex("by_team_name", (q) => q.eq("teamName", args.teamName));
+    
+    if (args.auctionId) {
+      query = query.filter((q) => q.eq(q.field("auctionId"), args.auctionId));
     }
-
-    const teamId = await ctx.db.insert('teams', {
-      auctionId: args.auctionId,
-      teamName: args.teamName,
-      owner: args.owner,
-      coinsLeft: args.totalCoins,
-      totalCoins: args.totalCoins,
-      totalPlayers: 0,
-      playerIds: [],
-    });
-
-    return { teamId, success: true };
+    
+    return await query.first();
   },
 });
 
-// Update team details
-export const updateTeam = mutation({
+// Update team coins
+export const updateTeamCoins = mutation({
   args: {
-    teamId: v.id('teams'),
-    teamName: v.optional(v.string()),
-    owner: v.optional(v.string()),
-    coinsLeft: v.optional(v.number()),
-    totalCoins: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const { teamId, ...updates } = args;
-    
-    // Remove undefined values
-    const cleanUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([_, value]) => value !== undefined)
-    );
-    
-    if (Object.keys(cleanUpdates).length === 0) {
-      throw new Error('No updates provided');
-    }
-
-    // If updating team name, check for duplicates in the same auction
-    if (updates.teamName) {
-      const team = await ctx.db.get(teamId);
-      if (!team) {
-        throw new Error('Team not found');
-      }
-
-      const existingTeam = await ctx.db
-        .query('teams')
-        .withIndex('by_auction_id', (q) => q.eq('auctionId', team.auctionId))
-        .filter((q) => q.eq(q.field('teamName'), updates.teamName!))
-        .first();
-
-      if (existingTeam && existingTeam._id !== teamId) {
-        throw new Error(`Team name "${updates.teamName}" already exists in this auction`);
-      }
-    }
-
-    // Validate coins
-    if (updates.coinsLeft !== undefined && updates.coinsLeft < 0) {
-      throw new Error('Coins left cannot be negative');
-    }
-
-    if (updates.totalCoins !== undefined && updates.totalCoins <= 0) {
-      throw new Error('Total coins must be positive');
-    }
-
-    await ctx.db.patch(teamId, cleanUpdates);
-    return { success: true };
-  },
-});
-
-// Add player to team
-export const addPlayerToTeam = mutation({
-  args: {
-    teamId: v.id('teams'),
-    playerId: v.string(),
-    playerCost: v.number(),
+    teamId: v.id("teams"),
+    coinsLeft: v.number(),
   },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
-    if (!team) {
-      throw new Error('Team not found');
+    if (!team) throw new Error("Team not found");
+
+    if (args.coinsLeft < 0) {
+      throw new Error("Team cannot have negative coins");
     }
 
-    // Check if player is already in the team
+    return await ctx.db.patch(args.teamId, { coinsLeft: args.coinsLeft });
+  },
+});
+
+// Add player to team (update playerIds array)
+export const addPlayerToTeam = mutation({
+  args: {
+    teamId: v.id("teams"),
+    playerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    if (!team) throw new Error("Team not found");
+
+    // Check if player already in team
     if (team.playerIds.includes(args.playerId)) {
-      throw new Error('Player is already in this team');
-    }
-
-    // Check if team has enough coins
-    if (team.coinsLeft < args.playerCost) {
-      throw new Error(`Insufficient coins. Team has ${team.coinsLeft} coins left, but player costs ${args.playerCost}`);
+      throw new Error("Player already in team");
     }
 
     const updatedPlayerIds = [...team.playerIds, args.playerId];
-    const updatedCoinsLeft = team.coinsLeft - args.playerCost;
     const updatedTotalPlayers = team.totalPlayers + 1;
 
-    await ctx.db.patch(args.teamId, {
+    return await ctx.db.patch(args.teamId, {
       playerIds: updatedPlayerIds,
-      coinsLeft: updatedCoinsLeft,
       totalPlayers: updatedTotalPlayers,
     });
-
-    return { success: true, coinsLeft: updatedCoinsLeft };
   },
 });
 
 // Remove player from team
 export const removePlayerFromTeam = mutation({
   args: {
-    teamId: v.id('teams'),
+    teamId: v.id("teams"),
     playerId: v.string(),
-    playerCost: v.number(),
   },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
-    if (!team) {
-      throw new Error('Team not found');
-    }
+    if (!team) throw new Error("Team not found");
 
-    // Check if player is in the team
-    const playerIndex = team.playerIds.indexOf(args.playerId);
-    if (playerIndex === -1) {
-      throw new Error('Player not found in this team');
-    }
+    const updatedPlayerIds = team.playerIds.filter(id => id !== args.playerId);
+    const updatedTotalPlayers = Math.max(0, team.totalPlayers - 1);
 
-    const updatedPlayerIds = [...team.playerIds];
-    updatedPlayerIds.splice(playerIndex, 1);
-    
-    const updatedCoinsLeft = team.coinsLeft + args.playerCost;
-    const updatedTotalPlayers = team.totalPlayers - 1;
-
-    await ctx.db.patch(args.teamId, {
+    return await ctx.db.patch(args.teamId, {
       playerIds: updatedPlayerIds,
-      coinsLeft: updatedCoinsLeft,
       totalPlayers: updatedTotalPlayers,
     });
-
-    return { success: true, coinsLeft: updatedCoinsLeft };
   },
 });
 
-// Update team coins (for manual adjustments)
-export const updateTeamCoins = mutation({
+// Update team name
+export const updateTeamName = mutation({
   args: {
-    teamId: v.id('teams'),
-    coinsLeft: v.number(),
-    totalCoins: v.optional(v.number()),
+    teamId: v.id("teams"),
+    teamName: v.string(),
   },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
-    if (!team) {
-      throw new Error('Team not found');
+    if (!team) throw new Error("Team not found");
+
+    // Check if new name already exists in the same auction
+    const existingTeam = await ctx.db
+      .query("teams")
+      .withIndex("by_team_name", (q) => q.eq("teamName", args.teamName))
+      .filter((q) => q.eq(q.field("auctionId"), team.auctionId))
+      .first();
+
+    if (existingTeam && existingTeam._id !== args.teamId) {
+      throw new Error("Team name already exists in this auction");
     }
 
-    if (args.coinsLeft < 0) {
-      throw new Error('Coins left cannot be negative');
-    }
-
-    const updates: any = { coinsLeft: args.coinsLeft };
-    
-    if (args.totalCoins !== undefined) {
-      if (args.totalCoins <= 0) {
-        throw new Error('Total coins must be positive');
-      }
-      updates.totalCoins = args.totalCoins;
-    }
-
-    await ctx.db.patch(args.teamId, updates);
-    return { success: true };
+    return await ctx.db.patch(args.teamId, { teamName: args.teamName });
   },
 });
 
 // Delete team
 export const deleteTeam = mutation({
-  args: { teamId: v.id('teams') },
+  args: { teamId: v.id("teams") },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.teamId);
-    return { success: true };
-  },
-});
+    // First, update all players to remove team association
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_team_id", (q) => q.eq("teamId", args.teamId))
+      .collect();
 
-
-// Transfer player between teams
-export const transferPlayer = mutation({
-  args: {
-    fromTeamId: v.id('teams'),
-    toTeamId: v.id('teams'),
-    playerId: v.string(),
-    playerCost: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const fromTeam = await ctx.db.get(args.fromTeamId);
-    const toTeam = await ctx.db.get(args.toTeamId);
-
-    if (!fromTeam) throw new Error('Source team not found');
-    if (!toTeam) throw new Error('Destination team not found');
-
-    // Check if player is in source team
-    if (!fromTeam.playerIds.includes(args.playerId)) {
-      throw new Error('Player not found in source team');
+    for (const player of players) {
+      await ctx.db.patch(player._id, {
+        teamId: undefined,
+        isSold: false,
+        currentBid: undefined,
+      });
     }
 
-    // Check if player is already in destination team
-    if (toTeam.playerIds.includes(args.playerId)) {
-      throw new Error('Player is already in destination team');
-    }
-
-    // Check if destination team has enough coins
-    if (toTeam.coinsLeft < args.playerCost) {
-      throw new Error(`Destination team has insufficient coins`);
-    }
-
-    // Remove from source team
-    const fromPlayerIds = fromTeam.playerIds.filter(id => id !== args.playerId);
-    await ctx.db.patch(args.fromTeamId, {
-      playerIds: fromPlayerIds,
-      coinsLeft: fromTeam.coinsLeft + args.playerCost,
-      totalPlayers: fromTeam.totalPlayers - 1,
-    });
-
-    // Add to destination team
-    const toPlayerIds = [...toTeam.playerIds, args.playerId];
-    await ctx.db.patch(args.toTeamId, {
-      playerIds: toPlayerIds,
-      coinsLeft: toTeam.coinsLeft - args.playerCost,
-      totalPlayers: toTeam.totalPlayers + 1,
-    });
-
-    return { success: true };
+    return await ctx.db.delete(args.teamId);
   },
 });
