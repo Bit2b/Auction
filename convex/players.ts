@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 
 export const createPlayer = mutation({
   args: {
+    userId: v.string(), // Added missing userId field
     auctionId: v.id('auctions'),
     teamId: v.optional(v.id('teams')),
     name: v.string(),
@@ -136,25 +137,26 @@ export const getPlayersByPreference = query({
     auctionId: v.id('auctions'),
   },
   handler: async (ctx, args) => {
-    const indexName =
-      args.preferenceType === '1'
-        ? 'by_first_preference'
-        : args.preferenceType === '2'
-          ? 'by_second_preference'
-          : 'by_third_preference';
-
-    const field =
-      args.preferenceType === '1'
-        ? 'preference1'
-        : args.preferenceType === '2'
-          ? 'preference2'
-          : 'preference3';
-
-    return await ctx.db
-      .query('players')
-      .withIndex(indexName as any, (q) => q.eq(field as any, args.preference))
-      .filter((q) => q.eq(q.field('auctionId'), args.auctionId))
-      .collect();
+    // Fixed the index handling without type casting
+    if (args.preferenceType === '1') {
+      return await ctx.db
+        .query('players')
+        .withIndex('by_first_preference', (q) => q.eq('preference1', args.preference))
+        .filter((q) => q.eq(q.field('auctionId'), args.auctionId))
+        .collect();
+    } else if (args.preferenceType === '2') {
+      return await ctx.db
+        .query('players')
+        .withIndex('by_second_preference', (q) => q.eq('preference2', args.preference))
+        .filter((q) => q.eq(q.field('auctionId'), args.auctionId))
+        .collect();
+    } else {
+      return await ctx.db
+        .query('players')
+        .withIndex('by_third_preference', (q) => q.eq('preference3', args.preference))
+        .filter((q) => q.eq(q.field('auctionId'), args.auctionId))
+        .collect();
+    }
   },
 });
 
@@ -180,6 +182,7 @@ export const updatePlayerBid = mutation({
 export const updatePlayer = mutation({
   args: {
     playerId: v.id('players'),
+    userId: v.optional(v.string()), // Added userId to update args
     name: v.optional(v.string()),
     year: v.optional(v.string()),
     branch: v.optional(
@@ -228,7 +231,7 @@ export const sellPlayerToTeam = mutation({
       currentBid: args.finalBid,
     });
 
-    // Update team
+    // Update team - Fixed playerIds type (should be player IDs, not strings)
     const updatedPlayerIds = [...team.playerIds, args.playerId];
     const updatedCoinsLeft = team.coinsLeft - args.finalBid;
     const updatedTotalPlayers = team.totalPlayers + 1;

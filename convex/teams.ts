@@ -116,7 +116,7 @@ export const updateTeamCoins = mutation({
 export const addPlayerToTeam = mutation({
   args: {
     teamId: v.id("teams"),
-    playerId: v.string(),
+    playerId: v.id("players"), // Changed from v.string() to v.id("players")
   },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
@@ -141,7 +141,7 @@ export const addPlayerToTeam = mutation({
 export const removePlayerFromTeam = mutation({
   args: {
     teamId: v.id("teams"),
-    playerId: v.string(),
+    playerId: v.id("players"), // Changed from v.string() to v.id("players")
   },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
@@ -201,5 +201,38 @@ export const deleteTeam = mutation({
     }
 
     return await ctx.db.delete(args.teamId);
+  },
+});
+
+// Get team statistics
+export const getTeamStats = query({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    if (!team) throw new Error("Team not found");
+
+    const players = await ctx.db
+      .query("players")
+      .withIndex("by_team_id", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    const totalSpent = team.totalCoins - team.coinsLeft;
+    const averagePlayerCost = team.totalPlayers > 0 ? totalSpent / team.totalPlayers : 0;
+
+    return {
+      teamId: args.teamId,
+      teamName: team.teamName,
+      totalPlayers: team.totalPlayers,
+      totalCoins: team.totalCoins,
+      coinsLeft: team.coinsLeft,
+      totalSpent,
+      averagePlayerCost,
+      players: players.map(p => ({
+        playerId: p._id,
+        name: p.name,
+        branch: p.branch,
+        currentBid: p.currentBid || 0,
+      })),
+    };
   },
 });
