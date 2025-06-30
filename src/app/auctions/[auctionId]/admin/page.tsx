@@ -18,24 +18,6 @@ import { useConvex } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { Id } from '../../../../../convex/_generated/dataModel';
 
-
-// Utility function to get team name
-const useTeamNameResolver = () => {
-  const convex = useConvex();
-
-  const getTeamName = async (teamId: string): Promise<string> => {
-    try {
-      const team = await convex.query(api.teams.getTeam, { teamId: teamId as Id<'teams'> });
-      return team?.teamName || teamId;
-    } catch (error) {
-      console.error('Error fetching team name:', error);
-      return teamId; // Fallback to team ID
-    }
-  };
-
-  return { getTeamName };
-};
-
 // Admin Badge Component
 const AdminBadge = () => (
   <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
@@ -126,13 +108,13 @@ const StatusChangeButton = ({ currentStatus, onStatusChange }: {
   );
 };
 
-// Team Request Card Component - Updated to always show team names
+// Team Request Card Component - Updated to handle proper ID types
 const TeamRequestCard = ({
-  request,
+  teamId,
   onApprove,
   onReject
 }: {
-  request: string,
+  teamId: Id<'teams'>,
   onApprove: () => void,
   onReject: () => void
 }) => (
@@ -140,7 +122,7 @@ const TeamRequestCard = ({
     <div className="flex items-center gap-3">
       <Clock size={16} className="text-yellow-600" />
       <span className="font-medium text-foreground">
-        <TeamDisplay teamId={request as Id<'teams'>} />
+        <TeamDisplay teamId={teamId} />
       </span>
       <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
         Pending
@@ -183,11 +165,6 @@ const TeamDisplay = ({ teamId }: { teamId: Id<'teams'> }) => {
   return <span>{team.teamName}</span>;
 };
 
-// Enhanced Team Display Component that handles both team IDs and regular strings
-const SmartTeamDisplay = ({ teamId }: { teamId: string }) => {
-  return <TeamDisplay teamId={teamId as Id<'teams'>} />;
-};
-
 // Auctioneer Display Component with name resolution
 const AuctioneerDisplay = ({ auctioneerId }: { auctioneerId: string }) => {
   const auctioneer = useQuery(api.users.getUserById, { userId: auctioneerId });
@@ -212,10 +189,6 @@ export default function AdminAuctionDetailPage() {
     starting: '',
     ending: '',
   });
-  const [newTeam, setNewTeam] = useState('');
-
-  // Get the team name resolver utility
-  const { getTeamName } = useTeamNameResolver();
 
   // Get auctionId from route parameters and cast to proper ID type
   const auctionId = params?.auctionId as Id<'auctions'> | undefined;
@@ -321,11 +294,11 @@ export default function AdminAuctionDetailPage() {
     });
   };
 
-  const handleRemoveTeam = async (index: number) => {
+  const handleRemoveTeam = async (teamId: Id<'teams'>) => {
     if (!auctionId || !auction) return;
 
-    const updatedTeams = [...auction.teams];
-    updatedTeams.splice(index, 1);
+    // Filter out the team from the current teams array
+    const updatedTeams = auction.teams.filter(id => id !== teamId);
 
     toast.promise(updateAuction({
       auctionId,
@@ -337,34 +310,28 @@ export default function AdminAuctionDetailPage() {
     });
   };
 
-  const handleApproveTeamRequest = async (teamRequest: string) => {
+  const handleApproveTeamRequest = async (teamId: Id<'teams'>) => {
     if (!auctionId || !auction) return;
 
     // Add to teams and remove from requests
-    const updatedTeams = [...auction.teams, teamRequest];
-
-    // Get team name for better toast message
-    const teamName = await getTeamName(teamRequest);
+    const updatedTeams = [...auction.teams, teamId];
 
     toast.promise(Promise.all([
       updateAuction({ auctionId, teams: updatedTeams }),
-      removeTeamRequest({ id: auctionId, teamId: teamRequest })
+      removeTeamRequest({ id: auctionId, teamId })
     ]), {
       loading: 'Approving team request...',
-      success: `${teamName} approved and added to auction`,
+      success: 'Team approved and added to auction',
       error: 'Failed to approve team request',
     });
   };
 
-  const handleRejectTeamRequest = async (teamRequest: string) => {
+  const handleRejectTeamRequest = async (teamId: Id<'teams'>) => {
     if (!auctionId) return;
 
-    // Get team name for better toast message
-    const teamName = await getTeamName(teamRequest);
-
-    toast.promise(removeTeamRequest({ id: auctionId, teamId: teamRequest }), {
+    toast.promise(removeTeamRequest({ id: auctionId, teamId }), {
       loading: 'Rejecting team request...',
-      success: `${teamName} request rejected`,
+      success: 'Team request rejected',
       error: 'Failed to reject team request',
     });
   };
@@ -551,12 +518,12 @@ export default function AdminAuctionDetailPage() {
             Pending Team Requests ({auction.teamRequests.length})
           </h2>
           <div className="space-y-3">
-            {auction.teamRequests.map((request, index) => (
+            {auction.teamRequests.map((teamId, index) => (
               <TeamRequestCard
                 key={index}
-                request={request}
-                onApprove={() => handleApproveTeamRequest(request)}
-                onReject={() => handleRejectTeamRequest(request)}
+                teamId={teamId}
+                onApprove={() => handleApproveTeamRequest(teamId)}
+                onReject={() => handleRejectTeamRequest(teamId)}
               />
             ))}
           </div>
@@ -631,10 +598,10 @@ export default function AdminAuctionDetailPage() {
                   <div className="flex items-center gap-2">
                     <Check size={14} className="text-green-600" />
                     <span className="truncate">
-                      <SmartTeamDisplay teamId={teamId} />
+                      <TeamDisplay teamId={teamId} />
                     </span>
                   </div>
-                  <TrashButton onClick={() => handleRemoveTeam(index)} />
+                  <TrashButton onClick={() => handleRemoveTeam(teamId)} />
                 </div>
               ))}
             </div>

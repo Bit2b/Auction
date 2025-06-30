@@ -31,7 +31,7 @@ export default defineSchema({
   teams: defineTable({
     auctionId: v.id('auctions'),
     teamName: v.string(),
-    owner: v.string(),
+    ownerId: v.string(),
     coinsLeft: v.number(),
     totalCoins: v.number(),
     totalPlayers: v.number(),
@@ -39,7 +39,7 @@ export default defineSchema({
   })
     .index('by_auction_id', ['auctionId'])
     .index('by_team_name', ['teamName'])
-    .index('by_owner', ['owner']),
+    .index('by_owner_id', ['ownerId']),
 
   players: defineTable({
     userId: v.string(),

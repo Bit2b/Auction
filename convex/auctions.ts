@@ -361,3 +361,43 @@ export const getAuctionWithTeams = query({
     };
   },
 });
+
+// Get user's team registration for specific auction
+export const getUserTeamRegistration = query({
+  args: {
+    auctionId: v.id('auctions'),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check if user owns any team in this auction
+    const auction = await ctx.db.get(args.auctionId);
+    if (!auction) return null;
+
+    // Get all teams in the auction
+    const teams = await Promise.all(
+      auction.teams.map(async (teamId) => {
+        return await ctx.db.get(teamId);
+      })
+    );
+
+    // Find team owned by this user
+    const userTeam = teams.find((team) => team?.ownerId === args.userId);
+    return userTeam || null;
+  },
+});
+
+// Get user's player registration for specific auction
+export const getUserPlayerRegistration = query({
+  args: {
+    auctionId: v.id('auctions'),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check if user is registered as a player in this auction
+    return await ctx.db
+      .query('players')
+      .withIndex('by_auction_id', (q) => q.eq('auctionId', args.auctionId))
+      .filter((q) => q.eq(q.field('userId'), args.userId))
+      .first();
+  },
+});

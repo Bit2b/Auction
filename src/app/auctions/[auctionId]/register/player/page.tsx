@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -62,14 +62,17 @@ export default function PlayerRegistrationPage() {
     preference3: '',
     achievement: '',
   });
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
   // Fetch auction data
   const auction = useQuery(api.auctions.getAuctionById, { auctionId: auctionId });
-  
+
+  // Get current user from your database
+  const currentUser = useQuery(api.users.getCurrentUser);
+
   // Mutations
   const createPlayer = useMutation(api.players.createPlayer);
 
@@ -91,7 +94,7 @@ export default function PlayerRegistrationPage() {
   const validateForm = () => {
     const requiredFields = ['name', 'year', 'branch', 'preference1', 'preference2', 'preference3'];
     const emptyFields = requiredFields.filter(field => !formData[field as keyof typeof formData].trim());
-    
+
     if (emptyFields.length > 0) {
       return `Please fill in all required fields: ${emptyFields.join(', ')}`;
     }
@@ -127,13 +130,27 @@ export default function PlayerRegistrationPage() {
       return;
     }
 
+    // Check if currentUser is loaded
+    if (currentUser === undefined) {
+      setSubmitStatus('error');
+      setErrorMessage('Loading user data, please try again');
+      return;
+    }
+
+    if (!currentUser) {
+      setSubmitStatus('error');
+      setErrorMessage('User not found in database. Please ensure you have completed your profile setup.');
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitStatus(null);
     setErrorMessage('');
 
     try {
-      // Create the player
+      // Create the player with userId
       await createPlayer({
+        userId: user.id, // Use Clerk user ID
         auctionId: auctionId as Id<"auctions">,
         name: formData.name.trim(),
         year: formData.year.trim(),
@@ -175,7 +192,7 @@ export default function PlayerRegistrationPage() {
   };
 
   // Show loading if user is not loaded yet
-  if (!user) {
+  if (!user || currentUser === undefined) {
     return (
       <div className="container mx-auto py-8 px-4">
         <div className="max-w-2xl mx-auto">
@@ -211,7 +228,7 @@ export default function PlayerRegistrationPage() {
         const fields = ['preference1', 'preference2', 'preference3'];
         return pref && fields[index] !== currentField;
       });
-    
+
     return PREFERENCES.filter(pref => !selectedPreferences.includes(pref));
   };
 
@@ -237,7 +254,7 @@ export default function PlayerRegistrationPage() {
             <p className="text-muted-foreground mb-4">
               Register yourself for "{auction.auctionName}" and showcase your skills
             </p>
-            
+
             {/* User Info */}
             <div className="mb-4">
               <p className="text-sm text-muted-foreground">
@@ -246,7 +263,7 @@ export default function PlayerRegistrationPage() {
                 </span>
               </p>
             </div>
-            
+
             <Card className="mb-6">
               <CardContent className="pt-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
@@ -274,8 +291,19 @@ export default function PlayerRegistrationPage() {
           <Alert className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Player registration is not available for this auction. 
+              Player registration is not available for this auction.
               Current status: <strong>{auction.status}</strong>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* User not found in database warning */}
+        {!currentUser && (
+          <Alert className="mb-6" variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Your user profile was not found in the database.
+              Please ensure you have completed your profile setup before registering as a player.
             </AlertDescription>
           </Alert>
         )}
@@ -295,7 +323,7 @@ export default function PlayerRegistrationPage() {
                 value={formData.name}
                 onChange={handleInputChange}
                 placeholder="Enter your full name"
-                disabled={!canRegister || isSubmitting}
+                disabled={!canRegister || isSubmitting || !currentUser}
                 className="w-full"
               />
             </div>
@@ -310,17 +338,17 @@ export default function PlayerRegistrationPage() {
                   value={formData.year}
                   onChange={handleInputChange}
                   placeholder="e.g., 2nd Year, 3rd Year"
-                  disabled={!canRegister || isSubmitting}
+                  disabled={!canRegister || isSubmitting || !currentUser}
                   className="w-full"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="branch">Branch *</Label>
-                <Select 
-                  value={formData.branch} 
+                <Select
+                  value={formData.branch}
                   onValueChange={(value) => handleSelectChange('branch', value)}
-                  disabled={!canRegister || isSubmitting}
+                  disabled={!canRegister || isSubmitting || !currentUser}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select your branch" />
@@ -349,10 +377,10 @@ export default function PlayerRegistrationPage() {
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="preference1">First Preference *</Label>
-                  <Select 
-                    value={formData.preference1} 
+                  <Select
+                    value={formData.preference1}
                     onValueChange={(value) => handleSelectChange('preference1', value)}
-                    disabled={!canRegister || isSubmitting}
+                    disabled={!canRegister || isSubmitting || !currentUser}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select your first preference" />
@@ -369,10 +397,10 @@ export default function PlayerRegistrationPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="preference2">Second Preference *</Label>
-                  <Select 
-                    value={formData.preference2} 
+                  <Select
+                    value={formData.preference2}
                     onValueChange={(value) => handleSelectChange('preference2', value)}
-                    disabled={!canRegister || isSubmitting}
+                    disabled={!canRegister || isSubmitting || !currentUser}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select your second preference" />
@@ -389,10 +417,10 @@ export default function PlayerRegistrationPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="preference3">Third Preference *</Label>
-                  <Select 
-                    value={formData.preference3} 
+                  <Select
+                    value={formData.preference3}
                     onValueChange={(value) => handleSelectChange('preference3', value)}
-                    disabled={!canRegister || isSubmitting}
+                    disabled={!canRegister || isSubmitting || !currentUser}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select your third preference" />
@@ -418,7 +446,7 @@ export default function PlayerRegistrationPage() {
                 value={formData.achievement}
                 onChange={handleInputChange}
                 placeholder="Describe your relevant achievements, skills, projects, or experiences..."
-                disabled={!canRegister || isSubmitting}
+                disabled={!canRegister || isSubmitting || !currentUser}
                 className="w-full min-h-[100px]"
               />
               <p className="text-xs text-muted-foreground">
@@ -457,7 +485,7 @@ export default function PlayerRegistrationPage() {
             {/* Submit Button */}
             <Button
               onClick={handleSubmit}
-              disabled={!canRegister || isSubmitting || validateForm() !== null}
+              disabled={!canRegister || isSubmitting || validateForm() !== null || !currentUser}
               className="w-full"
             >
               {isSubmitting ? (
@@ -479,15 +507,6 @@ export default function PlayerRegistrationPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></div>
-                <div>
-                  <p className="font-medium">Profile Creation</p>
-                  <p className="text-sm text-muted-foreground">
-                    Your player profile will be created with all the information provided
-                  </p>
-                </div>
-              </div>
               <div className="flex items-start gap-3">
                 <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></div>
                 <div>

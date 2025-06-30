@@ -29,14 +29,14 @@ export default function TeamRegistrationPage() {
   const [formData, setFormData] = useState({
     teamName: '',
   });
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
   // Fetch auction data
   const auction = useQuery(api.auctions.getAuctionById, { auctionId: auctionId });
-  
+
   // Mutations
   const createTeam = useMutation(api.teams.createTeam);
   const addTeamRequest = useMutation(api.auctions.addTeamRequest);
@@ -78,7 +78,7 @@ export default function TeamRegistrationPage() {
       const teamId = await createTeam({
         auctionId: auctionId as Id<"auctions">,
         teamName: formData.teamName.trim(),
-        owner: user.fullName || user.firstName || user.emailAddresses[0]?.emailAddress || 'Unknown User',
+        ownerId: user.id,
       });
 
       // Send team request to auction
@@ -162,7 +162,7 @@ export default function TeamRegistrationPage() {
             <p className="text-muted-foreground mb-4">
               Join "{auction.auctionName}" and compete for the best players
             </p>
-            
+
             {/* User Info */}
             <div className="mb-4">
               <p className="text-sm text-muted-foreground">
@@ -171,7 +171,7 @@ export default function TeamRegistrationPage() {
                 </span>
               </p>
             </div>
-            
+
             <Card className="mb-6">
               <CardContent className="pt-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
@@ -206,7 +206,7 @@ export default function TeamRegistrationPage() {
           <Alert className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Team registration is not available for this auction. 
+              Team registration is not available for this auction.
               Current status: <strong>{auction.status}</strong>
             </AlertDescription>
           </Alert>
@@ -243,7 +243,7 @@ export default function TeamRegistrationPage() {
                   <div>
                     <p className="font-medium">Team registered successfully!</p>
                     <p className="text-sm">
-                      Your request has been sent to the auction organizer. 
+                      Your request has been sent to the auction organizer.
                       Redirecting to auction page...
                     </p>
                   </div>

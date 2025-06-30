@@ -11,7 +11,6 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useRouter } from 'next/navigation'
-import { Id } from '@/../convex/_generated/dataModel'
 
 export default function CreateAuctionPage() {
   const { userId } = useAuth()
