@@ -12,9 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, Pencil, Plus, ArrowLeft, Settings, Check, X, Clock, Users, Shield } from 'lucide-react';
+import { Trash2, Pencil,  ArrowLeft, Settings, Check, X, Clock, Users, Shield, Play } from 'lucide-react';
 import { toast } from 'sonner';
-import { useConvex } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { Id } from '../../../../../convex/_generated/dataModel';
 
@@ -410,6 +409,17 @@ export default function AdminAuctionDetailPage() {
         </div>
 
         <div className="flex gap-2">
+          {/* Live Auction Admin Panel Link - Only show when auction is live */}
+          {auction.status === 'live' && (
+            <Button
+              onClick={() => router.push('admin/live')}
+              className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+            >
+              <Play size={16} />
+              Live Admin Panel
+            </Button>
+          )}
+
           <StatusChangeButton
             currentStatus={auction.status}
             onStatusChange={handleStatusChange}

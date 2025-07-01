@@ -7,6 +7,7 @@ export const createAuction = mutation({
     auctionName: v.string(),
     teams: v.array(v.id('teams')),
     teamRequests: v.array(v.id('teams')),
+    playerIds: v.array(v.id('players')),
     starting: v.string(),
     ending: v.string(),
     auctioneer: v.string(),
@@ -127,7 +128,7 @@ export const getAuctionByName = query({
 export const addTeamRequest = mutation({
   args: {
     id: v.id('auctions'),
-    teamId: v.id('teams'), // Changed from v.string()
+    teamId: v.id('teams'),
   },
   handler: async (ctx, args) => {
     const auction = await ctx.db.get(args.id);
@@ -154,7 +155,7 @@ export const addTeamRequest = mutation({
 export const removeTeamRequest = mutation({
   args: {
     id: v.id('auctions'),
-    teamId: v.id('teams'), // Changed from v.string()
+    teamId: v.id('teams'),
   },
   handler: async (ctx, args) => {
     const auction = await ctx.db.get(args.id);
@@ -221,6 +222,51 @@ export const removeTeamFromAuction = mutation({
   },
 });
 
+// Add Player to Auction
+export const addPlayerToAuction = mutation({
+  args: {
+    auctionId: v.id('auctions'),
+    playerId: v.id('players'),
+  },
+  handler: async (ctx, args) => {
+    const auction = await ctx.db.get(args.auctionId);
+    if (!auction) throw new Error('Auction not found');
+
+    // Check if player is already in auction
+    if (auction.playerIds.includes(args.playerId)) {
+      throw new Error('Player already in auction');
+    }
+
+    // Verify player exists
+    const player = await ctx.db.get(args.playerId);
+    if (!player) throw new Error('Player not found');
+
+    await ctx.db.patch(args.auctionId, {
+      playerIds: [...auction.playerIds, args.playerId],
+    });
+
+    return { success: true };
+  },
+});
+
+// Remove Player from Auction
+export const removePlayerFromAuction = mutation({
+  args: {
+    auctionId: v.id('auctions'),
+    playerId: v.id('players'),
+  },
+  handler: async (ctx, args) => {
+    const auction = await ctx.db.get(args.auctionId);
+    if (!auction) throw new Error('Auction not found');
+
+    await ctx.db.patch(args.auctionId, {
+      playerIds: auction.playerIds.filter((p) => p !== args.playerId),
+    });
+
+    return { success: true };
+  },
+});
+
 // Get Auction by ID
 export const getAuctionById = query({
   args: { auctionId: v.id('auctions') },
@@ -277,7 +323,8 @@ export const updateAuction = mutation({
     auctionName: v.optional(v.string()),
     starting: v.optional(v.string()),
     ending: v.optional(v.string()),
-    teams: v.optional(v.array(v.id('teams'))), // Changed from v.array(v.string())
+    teams: v.optional(v.array(v.id('teams'))),
+    playerIds: v.optional(v.array(v.id('players'))),
     status: v.optional(
       v.union(
         v.literal('registering'),
@@ -354,10 +401,19 @@ export const getAuctionWithTeams = query({
       })
     );
 
+    // Get player details
+    const playerDetails = await Promise.all(
+      auction.playerIds.map(async (playerId) => {
+        const player = await ctx.db.get(playerId);
+        return player;
+      })
+    );
+
     return {
       ...auction,
       teamDetails: teamDetails.filter(Boolean),
       teamRequestDetails: teamRequestDetails.filter(Boolean),
+      playerDetails: playerDetails.filter(Boolean),
     };
   },
 });

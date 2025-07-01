@@ -75,6 +75,7 @@ export default function PlayerRegistrationPage() {
 
   // Mutations
   const createPlayer = useMutation(api.players.createPlayer);
+  const updateAuction = useMutation(api.auctions.updateAuction); // Add this mutation
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -149,7 +150,7 @@ export default function PlayerRegistrationPage() {
 
     try {
       // Create the player with userId
-      await createPlayer({
+      const playerId = await createPlayer({
         userId: user.id, // Use Clerk user ID
         auctionId: auctionId as Id<"auctions">,
         name: formData.name.trim(),
@@ -160,6 +161,12 @@ export default function PlayerRegistrationPage() {
         preference3: formData.preference3,
         achievement: formData.achievement.trim(),
         isSold: false,
+      });
+
+      // Update the auction to include the new player ID
+      await updateAuction({
+        auctionId: auctionId,
+        playerIds: [...auction.playerIds, playerId]
       });
 
       setSubmitStatus('success');

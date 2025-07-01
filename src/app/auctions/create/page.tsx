@@ -101,11 +101,12 @@ export default function CreateAuctionPage() {
       // Call mutation with all required fields
       const newAuctionId = await createAuction({
         auctionName: formData.auctionName.trim(),
-        teams: [], // Initialize empty array
-        teamRequests: [], // Initialize empty array
+        playerIds: [],
+        teams: [],
+        teamRequests: [],
         starting: formData.starting,
         ending: formData.ending,
-        auctioneer: userId, // Pass user ID string
+        auctioneer: userId,
         startingCoin: startingCoin,
         status: formData.status
       })

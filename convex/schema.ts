@@ -13,6 +13,7 @@ export default defineSchema({
     auctionName: v.string(),
     teams: v.array(v.id('teams')),
     teamRequests: v.array(v.id('teams')),
+    playerIds: v.array(v.id('players')),
     starting: v.string(),
     ending: v.string(),
     auctioneer: v.string(),
@@ -66,4 +67,33 @@ export default defineSchema({
       searchField: 'name',
       filterFields: ['auctionId', 'teamId', 'isSold', 'branch'],
     }),
+
+  currentAuctions: defineTable({
+    auctionId: v.id('auctions'),
+
+    // Auction state
+    currentPlayerId: v.optional(v.id('players')),
+    playerQueue: v.array(v.id('players')),
+    unsoldPlayers: v.optional(v.array(v.id('players'))),
+
+    status: v.union(
+      v.literal('idle'),
+      v.literal('running'),
+      v.literal('paused')
+    ),
+    countdownEndsAt: v.optional(v.string()),
+
+    // Bidding
+    currentBid: v.optional(v.number()),
+    currentBidderTeamId: v.optional(v.id('teams')),
+    bidHistory: v.optional(
+      v.array(
+        v.object({
+          teamId: v.id('teams'),
+          amount: v.number(),
+          timestamp: v.string(), // ISO
+        })
+      )
+    ),
+  }).index('by_auction_id', ['auctionId']),
 });

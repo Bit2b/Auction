@@ -102,12 +102,17 @@ export default function AuctionViewPage() {
     }
   };
 
-  const handleLiveBidding = () => {
-    if (auctionId) {
-      router.push(`/auctions/${auctionId}/live/bid`);
-    }
-  };
 
+
+const handleLiveBidding = () => {
+  if (auctionId && userTeamRegistration) {
+    // Get the team ID from the user's team registration
+    const teamId = userTeamRegistration._id;
+    
+    // Navigate to the live bidding page with the team ID as a query parameter
+    router.push(`/auctions/${auctionId}/live/bid/${teamId}`);
+  }
+};
   const handleViewLiveAuction = () => {
     if (auctionId) {
       router.push(`/auctions/${auctionId}/live`);
