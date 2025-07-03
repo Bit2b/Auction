@@ -3,6 +3,7 @@
 import { useQuery, useMutation } from 'convex/react';
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import {
   Timer,
-  DollarSign,
   Gavel,
   Users,
   Trophy,
@@ -23,7 +23,8 @@ import {
   Zap,
   Target,
   User,
-  Star
+  Star,
+  ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Id } from '../../../../../../../convex/_generated/dataModel';
@@ -68,8 +69,8 @@ const CountdownTimer = ({ timeRemaining }: { timeRemaining: number }) => {
           <span className="text-sm font-medium">Time Remaining</span>
         </div>
         <div className={`text-2xl font-mono font-bold ${isVeryLowTime ? 'text-red-500 animate-pulse' :
-            isLowTime ? 'text-orange-500' :
-              'text-green-500'
+          isLowTime ? 'text-orange-500' :
+            'text-green-500'
           }`}>
           {formatTime(time)}
         </div>
@@ -83,7 +84,7 @@ const CountdownTimer = ({ timeRemaining }: { timeRemaining: number }) => {
 };
 
 // Player Display Component
-const PlayerCard = ({ player }: { player: any }) => {
+const PlayerCard = ({ player, auctionId }: { player: any; auctionId: string }) => {
   if (!player) return null;
 
   return (
@@ -94,7 +95,13 @@ const PlayerCard = ({ player }: { player: any }) => {
           <div className="space-y-1">
             <CardTitle className="text-2xl font-bold flex items-center gap-2">
               <User size={24} />
-              {player.name}
+              <Link
+                href={`/auction/${auctionId}/players/${player._id}`}
+                className="hover:text-blue-600 transition-colors flex items-center gap-1"
+              >
+                {player.name}
+                <ExternalLink size={16} />
+              </Link>
             </CardTitle>
             <div className="flex items-center gap-2 text-muted-foreground">
               <span>{player.year} Year</span>
@@ -128,7 +135,7 @@ const PlayerCard = ({ player }: { player: any }) => {
 };
 
 // Bid History Component
-const BidHistory = ({ bidHistory }: { bidHistory: any[] }) => {
+const BidHistory = ({ bidHistory, auctionId }: { bidHistory: any[]; auctionId: string }) => {
   if (!bidHistory || bidHistory.length === 0) {
     return (
       <Card>
@@ -161,7 +168,13 @@ const BidHistory = ({ bidHistory }: { bidHistory: any[] }) => {
             <div key={index} className="flex justify-between items-center p-3 bg-muted rounded-lg">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                <span className="font-medium">{bid.teamName}</span>
+                <Link
+                  href={`/teams/${bid.teamId}`}
+                  className="font-medium hover:text-blue-600 transition-colors flex items-center gap-1"
+                >
+                  {bid.teamName}
+                  <ExternalLink size={12} />
+                </Link>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-green-600">
@@ -180,14 +193,20 @@ const BidHistory = ({ bidHistory }: { bidHistory: any[] }) => {
 };
 
 // Team Status Component
-const TeamStatus = ({ team, isCurrentBidder }: { team: any; isCurrentBidder: boolean }) => {
+const TeamStatus = ({ team, isCurrentBidder, auctionId }: { team: any; isCurrentBidder: boolean; auctionId: string }) => {
   return (
     <Card className={`${isCurrentBidder ? 'ring-2 ring-blue-500 bg-blue-50/50' : ''}`}>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between">
           <span className="flex items-center gap-2">
             <Trophy size={18} />
-            {team.teamName}
+            <Link
+              href={`/teams/${team._id}`}
+              className="hover:text-blue-600 transition-colors flex items-center gap-1"
+            >
+              {team.teamName}
+              <ExternalLink size={14} />
+            </Link>
           </span>
           {isCurrentBidder && (
             <Badge variant="default" className="animate-pulse">
@@ -218,10 +237,10 @@ export default function AuctionBiddingPage() {
   const [bidAmount, setBidAmount] = useState('');
   const [customBid, setCustomBid] = useState('');
   const params = useParams();
-  
+
   const auctionId = params?.auctionId as Id<'auctions'>;
   const teamId = params?.teamId as Id<'teams'>;
-  console.log(params,auctionId,teamId);
+  console.log(params, auctionId, teamId);
 
   // Queries
   const auctionDashboard = useQuery(api.currentAuctions.getAuctionDashboard,
@@ -351,7 +370,7 @@ export default function AuctionBiddingPage() {
   const isCurrentBidder = team._id === auctionDashboard?.teams?.find(t => t.isCurrentBidder)?.teamId;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto py-8 px-4">
         {/* Header */}
         <div className="text-center mb-8">
@@ -377,7 +396,7 @@ export default function AuctionBiddingPage() {
             {/* Current Player */}
             {currentPlayer ? (
               <div className="space-y-4">
-                <PlayerCard player={currentPlayer} />
+                <PlayerCard player={currentPlayer} auctionId={auctionId} />
 
                 {/* Countdown and Current Bid */}
                 {isAuctionActive && (
@@ -482,13 +501,13 @@ export default function AuctionBiddingPage() {
             )}
 
             {/* Bid History */}
-            <BidHistory bidHistory={auctionDashboard?.bidHistory || []} />
+            <BidHistory bidHistory={auctionDashboard?.bidHistory || []} auctionId={auctionId} />
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Team Status */}
-            <TeamStatus team={team} isCurrentBidder={isCurrentBidder} />
+            <TeamStatus team={team} isCurrentBidder={isCurrentBidder} auctionId={auctionId} />
 
             {/* All Teams */}
             <Card>
@@ -503,12 +522,18 @@ export default function AuctionBiddingPage() {
                   {auctionDashboard?.teams?.map((auctionTeam) => (
                     <div
                       key={auctionTeam.teamId}
-                      className={`p-3 rounded-lg border ${auctionTeam.teamId === team._id ? 'bg-blue-50 border-blue-200' : 'bg-muted'
+                      className={`p-3 rounded-lg border ${auctionTeam.teamId === team._id ? 'bg-violet-800 border-blue-200' : 'bg-muted'
                         }`}
                     >
                       <div className="flex justify-between items-center">
                         <span className="font-medium">
-                          {auctionTeam.teamName}
+                          <Link
+                            href={`/teams/${auctionTeam.teamId}`}
+                            className="hover:text-blue-600 transition-colors flex items-center gap-1"
+                          >
+                            {auctionTeam.teamName}
+                            <ExternalLink size={12} />
+                          </Link>
                           {auctionTeam.isCurrentBidder && (
                             <Badge variant="default" className="ml-2 text-xs">Leading</Badge>
                           )}
@@ -540,7 +565,15 @@ export default function AuctionBiddingPage() {
                           {index + 1}
                         </div>
                         <div className="flex-1">
-                          <div className="font-medium text-sm">{player?.name}</div>
+                          <div className="font-medium text-sm">
+                            <Link
+                              href={`/auction/${auctionId}/players/${player?._id}`}
+                              className="hover:text-blue-600 transition-colors flex items-center gap-1"
+                            >
+                              {player?.name}
+                              <ExternalLink size={12} />
+                            </Link>
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {player?.year} • {player?.preference1}
                           </div>

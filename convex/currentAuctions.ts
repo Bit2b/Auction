@@ -298,30 +298,131 @@ export const pauseAuction = mutation({
   },
 });
 
-// Reset auction state
 export const resetAuction = mutation({
   args: {
     auctionId: v.id('auctions'),
   },
-  handler: async (ctx, args) => {
-    const { auctionId } = args;
+  handler: async (ctx, { auctionId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error('Not authenticated');
+    }
 
-    const auctionState = await ctx.db
+    // Get the auction to verify ownership and get initial coin amount
+    const auction = await ctx.db.get(auctionId);
+    if (!auction) {
+      throw new Error('Auction not found');
+    }
+
+    // Verify the user is the auctioneer
+    if (auction.auctioneer !== identity.subject) {
+      throw new Error('Only the auctioneer can reset the auction');
+    }
+
+    // Reset the current auction state
+    const existingCurrentAuction = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
 
-    if (!auctionState) {
-      throw new Error('Auction state not found');
+    if (existingCurrentAuction) {
+      await ctx.db.delete(existingCurrentAuction._id);
     }
 
-    await ctx.db.delete(auctionState._id);
+    // Reset all teams: restore coins and clear player arrays
+    const teams = await ctx.db
+      .query('teams')
+      .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
+      .collect();
 
-    return { success: true };
+    for (const team of teams) {
+      await ctx.db.patch(team._id, {
+        coinsLeft: auction.startingCoin, // Reset to initial coin amount
+        playerIds: [], // Clear player array
+        totalPlayers: 0, // Reset player count
+      });
+    }
+
+    // Reset all players: mark as unsold and clear team assignments
+    const players = await ctx.db
+      .query('players')
+      .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
+      .collect();
+
+    for (const player of players) {
+      await ctx.db.patch(player._id, {
+        isSold: false,
+        teamId: undefined,
+        currentBid: undefined,
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Auction reset successfully',
+      teamsReset: teams.length,
+      playersReset: players.length,
+    };
   },
 });
-// convex/currentAuctions.js - Queries
 
+export const reAddPlayerToQueue = mutation({
+  args: { 
+    auctionId: v.id("auctions"), 
+    playerId: v.id("players") 
+  },
+  handler: async (ctx, args) => {
+    const { auctionId, playerId } = args;
+
+    // Get the current auction state
+    const auctionState = await ctx.db
+      .query("currentAuctions")
+      .withIndex("by_auction_id", (q) => q.eq("auctionId", auctionId))
+      .unique();
+
+    if (!auctionState) {
+      throw new Error("Auction state not found. Please initialize the auction first.");
+    }
+
+    // Check if player is in unsold list
+    if (!auctionState.unsoldPlayers || !auctionState.unsoldPlayers.includes(playerId)) {
+      throw new Error("Player is not in the unsold list.");
+    }
+
+    // Check if player is already in queue
+    if (auctionState.playerQueue.includes(playerId)) {
+      throw new Error("Player is already in the auction queue.");
+    }
+
+    // Verify the player exists
+    const player = await ctx.db.get(playerId);
+    if (!player) {
+      throw new Error("Player not found.");
+    }
+
+    // Remove player from unsold list
+    const updatedUnsoldPlayers = auctionState.unsoldPlayers.filter(
+      (id) => id !== playerId
+    );
+
+    // Add player to the end of the queue
+    const updatedPlayerQueue = [...auctionState.playerQueue, playerId];
+
+    // Update the auction state (removed playersRemaining field)
+    await ctx.db.patch(auctionState._id, {
+      playerQueue: updatedPlayerQueue,
+      unsoldPlayers: updatedUnsoldPlayers,
+    });
+
+    return {
+      success: true,
+      message: `${player.name} has been re-added to the auction queue`,
+      playerName: player.name,
+      queuePosition: updatedPlayerQueue.length,
+      remainingUnsold: updatedUnsoldPlayers.length
+    };
+  },
+});
 
 // Get current auction state
 export const getAuctionState = query({
@@ -330,35 +431,39 @@ export const getAuctionState = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     if (!auctionState) {
       return null;
     }
-    
+
     // Get current player details if exists
     let currentPlayer = null;
     if (auctionState.currentPlayerId) {
       currentPlayer = await ctx.db.get(auctionState.currentPlayerId);
     }
-    
+
     // Get current bidder team details if exists
     let currentBidderTeam = null;
     if (auctionState.currentBidderTeamId) {
       currentBidderTeam = await ctx.db.get(auctionState.currentBidderTeamId);
     }
-    
+
     return {
       ...auctionState,
       currentPlayer,
       currentBidderTeam,
       playersRemaining: auctionState.playerQueue.length,
-      timeRemaining: auctionState.countdownEndsAt ? 
-        Math.max(0, new Date(auctionState.countdownEndsAt).getTime() - Date.now()) : 0,
+      timeRemaining: auctionState.countdownEndsAt
+        ? Math.max(
+            0,
+            new Date(auctionState.countdownEndsAt).getTime() - Date.now()
+          )
+        : 0,
     };
   },
 });
@@ -371,21 +476,21 @@ export const getPlayerQueue = query({
   },
   handler: async (ctx, args) => {
     const { auctionId, limit = 10 } = args;
-    
+
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     if (!auctionState) {
       return [];
     }
-    
+
     const queuePlayerIds = auctionState.playerQueue.slice(0, limit);
     const players = await Promise.all(
-      queuePlayerIds.map(playerId => ctx.db.get(playerId))
+      queuePlayerIds.map((playerId) => ctx.db.get(playerId))
     );
-    
+
     return players.filter(Boolean);
   },
 });
@@ -397,16 +502,16 @@ export const getCurrentBidHistory = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     if (!auctionState || !auctionState.bidHistory) {
       return [];
     }
-    
+
     // Get team details for each bid
     const bidHistoryWithTeams = await Promise.all(
       auctionState.bidHistory.map(async (bid) => {
@@ -417,9 +522,10 @@ export const getCurrentBidHistory = query({
         };
       })
     );
-    
-    return bidHistoryWithTeams.sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+
+    return bidHistoryWithTeams.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   },
 });
@@ -431,20 +537,20 @@ export const getUnsoldPlayers = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     if (!auctionState || !auctionState.unsoldPlayers) {
       return [];
     }
-    
+
     const players = await Promise.all(
-      auctionState.unsoldPlayers.map(playerId => ctx.db.get(playerId))
+      auctionState.unsoldPlayers.map((playerId) => ctx.db.get(playerId))
     );
-    
+
     return players.filter(Boolean);
   },
 });
@@ -456,31 +562,33 @@ export const getAuctionStats = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     // Get all players in this auction
     const allPlayers = await ctx.db
       .query('players')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .collect();
-    
+
     const totalPlayers = allPlayers.length;
-    const soldPlayers = allPlayers.filter(p => p.isSold).length;
+    const soldPlayers = allPlayers.filter((p) => p.isSold).length;
     const unsoldCount = auctionState?.unsoldPlayers?.length || 0;
     const remainingInQueue = auctionState?.playerQueue?.length || 0;
-    
+
     return {
       totalPlayers,
       soldPlayers,
       unsoldPlayers: unsoldCount,
       remainingInQueue,
       currentlyAuctioning: auctionState?.currentPlayerId ? 1 : 0,
-      completionPercentage: totalPlayers > 0 ? 
-        Math.round(((soldPlayers + unsoldCount) / totalPlayers) * 100) : 0,
+      completionPercentage:
+        totalPlayers > 0
+          ? Math.round(((soldPlayers + unsoldCount) / totalPlayers) * 100)
+          : 0,
     };
   },
 });
@@ -492,13 +600,13 @@ export const getTeamBiddingInfo = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     const teams = await ctx.db
       .query('teams')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .collect();
-    
-    return teams.map(team => ({
+
+    return teams.map((team) => ({
       teamId: team._id,
       teamName: team.teamName,
       coinsLeft: team.coinsLeft,
@@ -516,20 +624,20 @@ export const checkCountdownExpired = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     if (!auctionState || !auctionState.countdownEndsAt) {
       return { expired: false, timeRemaining: 0 };
     }
-    
+
     const now = Date.now();
     const endTime = new Date(auctionState.countdownEndsAt).getTime();
     const timeRemaining = Math.max(0, endTime - now);
-    
+
     return {
       expired: timeRemaining === 0,
       timeRemaining,
@@ -545,28 +653,28 @@ export const getAuctionDashboard = query({
   },
   handler: async (ctx, args) => {
     const { auctionId } = args;
-    
+
     // Get auction state
     const auctionState = await ctx.db
       .query('currentAuctions')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .first();
-    
+
     if (!auctionState) {
       return null;
     }
-    
+
     // Get current player
     let currentPlayer = null;
     if (auctionState.currentPlayerId) {
       currentPlayer = await ctx.db.get(auctionState.currentPlayerId);
     }
-    
+
     // Get next few players
     const nextPlayers = await Promise.all(
-      auctionState.playerQueue.slice(0, 5).map(id => ctx.db.get(id))
+      auctionState.playerQueue.slice(0, 5).map((id) => ctx.db.get(id))
     );
-    
+
     // Get bid history with team names
     const bidHistory = await Promise.all(
       (auctionState.bidHistory || []).map(async (bid) => {
@@ -574,24 +682,29 @@ export const getAuctionDashboard = query({
         return { ...bid, teamName: team?.teamName || 'Unknown' };
       })
     );
-    
+
     // Get team info
     const teams = await ctx.db
       .query('teams')
       .withIndex('by_auction_id', (q) => q.eq('auctionId', auctionId))
       .collect();
-    
+
     return {
       status: auctionState.status,
       currentPlayer,
       nextPlayers: nextPlayers.filter(Boolean),
       currentBid: auctionState.currentBid,
-      bidHistory: bidHistory.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      bidHistory: bidHistory.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       ),
-      timeRemaining: auctionState.countdownEndsAt ? 
-        Math.max(0, new Date(auctionState.countdownEndsAt).getTime() - Date.now()) : 0,
-      teams: teams.map(team => ({
+      timeRemaining: auctionState.countdownEndsAt
+        ? Math.max(
+            0,
+            new Date(auctionState.countdownEndsAt).getTime() - Date.now()
+          )
+        : 0,
+      teams: teams.map((team) => ({
         teamId: team._id,
         teamName: team.teamName,
         coinsLeft: team.coinsLeft,

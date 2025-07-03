@@ -1,9 +1,14 @@
+'use client';
+
+import { useUser } from "@clerk/nextjs";
 import Topbar from "@/components/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Home, Gavel, Users, User } from "lucide-react";
 import Link from "next/link";
 
 export default function Page() {
+  const { user } = useUser();
+
   const navigationCards = [
     {
       title: "All Auctions",
@@ -14,13 +19,13 @@ export default function Page() {
     {
       title: "My Auctions",
       icon: <Users className="h-8 w-8" />,
-      href: "/myAuctions/userId",
+      href: `/myAuctions`,
       description: "View and manage team information"
     },
     {
-      title: "My Teams",
+      title: "Teams",
       icon: <User className="h-8 w-8" />,
-      href: "/myTeams/userId",
+      href: "/teams",
       description: "Browse and manage player profiles"
     }
   ];
@@ -61,14 +66,14 @@ export default function Page() {
                   <div className="mt-4 text-right">
                     <span className="inline-flex items-center text-primary font-medium group-hover:underline">
                       Go to {card.title}
-                      <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        width="20" 
-                        height="20" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2" 
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
                         className="ml-2"
                       >
                         <path d="M5 12h14M12 5l7 7-7 7" />

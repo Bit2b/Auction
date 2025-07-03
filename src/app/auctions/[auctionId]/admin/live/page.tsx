@@ -1,7 +1,8 @@
 'use client';
 
 import { useQuery, useMutation } from 'convex/react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,12 +28,13 @@ import {
   RotateCcw,
   Timer,
   DollarSign,
-  User
+  User,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Id } from '../../../../../../convex/_generated/dataModel';
 import { api } from '../../../../../../convex/_generated/api';
-
 
 // Admin Badge Component
 const AdminBadge = () => (
@@ -196,27 +198,58 @@ const QueueManagement = ({
   );
 };
 
-// Countdown Timer Component
+// Countdown Timer Component with improved logic
 const CountdownTimer = ({ 
   timeRemaining, 
-  onExtend 
+  onExtend,
+  isRunning = true 
 }: { 
   timeRemaining: number;
   onExtend: (seconds: number) => void;
+  isRunning?: boolean;
 }) => {
+  const [displayTime, setDisplayTime] = useState(timeRemaining);
+
+  useEffect(() => {
+    if (!isRunning) {
+      setDisplayTime(timeRemaining);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setDisplayTime((prev) => {
+        const newTime = Math.max(0, prev - 1000);
+        return newTime;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isRunning, timeRemaining]);
+
+  // Sync with server time when timeRemaining changes
+  useEffect(() => {
+    setDisplayTime(timeRemaining);
+  }, [timeRemaining]);
+
   const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
+    const seconds = Math.max(0, Math.floor(ms / 1000));
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const isLowTime = timeRemaining < 10000; // Less than 10 seconds
+  const isLowTime = displayTime < 10000; // Less than 10 seconds
+  const isExpired = displayTime <= 0;
 
   return (
     <div className="flex items-center gap-2">
-      <div className={`text-2xl font-mono font-bold ${isLowTime ? 'text-red-500 animate-pulse' : 'text-green-500'}`}>
-        {formatTime(timeRemaining)}
+      <div className={`text-2xl font-mono font-bold ${
+        isExpired ? 'text-red-600 animate-pulse' : 
+        isLowTime ? 'text-orange-500 animate-pulse' : 
+        'text-green-500'
+      }`}>
+        {formatTime(displayTime)}
+        {isExpired && <span className="text-sm ml-2">EXPIRED</span>}
       </div>
       <div className="flex gap-1">
         <Button size="sm" variant="outline" onClick={() => onExtend(30)}>
@@ -225,14 +258,59 @@ const CountdownTimer = ({
         <Button size="sm" variant="outline" onClick={() => onExtend(60)}>
           +1m
         </Button>
+        <Button size="sm" variant="outline" onClick={() => onExtend(120)}>
+          +2m
+        </Button>
       </div>
     </div>
+  );
+};
+
+// Unsold Players Component
+const UnsoldPlayersSection = ({ 
+  unsoldPlayers, 
+  auctionId,
+  onReAddToQueue 
+}: { 
+  unsoldPlayers: Id<'players'>[];
+  auctionId: Id<'auctions'>;
+  onReAddToQueue: (playerId: Id<'players'>) => void;
+}) => {
+  if (!unsoldPlayers || unsoldPlayers.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card className="p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <AlertTriangle size={18} className="text-yellow-500" />
+        Unsold Players ({unsoldPlayers.length})
+      </h3>
+      <div className="space-y-2 max-h-64 overflow-y-auto">
+        {unsoldPlayers.map((playerId) => (
+          <div key={playerId} className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+            <PlayerDisplay playerId={playerId} />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onReAddToQueue(playerId)}
+              className="flex items-center gap-1 text-xs"
+            >
+              <RefreshCw size={12} />
+              Re-add to Queue
+            </Button>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 };
 
 export default function CurrentAuctionAdminPanel() {
   const [countdownDuration, setCountdownDuration] = useState(60);
   const params = useParams();
+  const router = useRouter();
+  const { user, isLoaded: isUserLoaded } = useUser();
   
   // Extract auctionId from URL params and cast to proper type
   const auctionId = params?.auctionId as Id<'auctions'>;
@@ -259,6 +337,18 @@ export default function CurrentAuctionAdminPanel() {
     auctionId ? { auctionId } : "skip"
   );
 
+  // Authentication check
+  useEffect(() => {
+    if (isUserLoaded && auction && user) {
+      // Check if current user is the auctioneer
+      if (auction.auctioneer !== user.id) {
+        toast.error('Access denied. You are not the auctioneer for this auction.');
+        router.push('/');
+        return;
+      }
+    }
+  }, [isUserLoaded, auction, user, router]);
+
   // Mutations
   const initializeAuction = useMutation(api.currentAuctions.initializeAuction);
   const startNextPlayer = useMutation(api.currentAuctions.startNextPlayer);
@@ -267,6 +357,7 @@ export default function CurrentAuctionAdminPanel() {
   const markPlayerUnsold = useMutation(api.currentAuctions.markPlayerUnsold);
   const extendCountdown = useMutation(api.currentAuctions.extendCountdown);
   const resetAuction = useMutation(api.currentAuctions.resetAuction);
+  const reAddPlayerToQueue = useMutation(api.currentAuctions.reAddPlayerToQueue);
 
   const handleInitializeAuction = async () => {
     if (!auction?.playerIds) {
@@ -367,7 +458,19 @@ export default function CurrentAuctionAdminPanel() {
     );
   };
 
-  if (auction === undefined || auctionDashboard === undefined) {
+  const handleReAddToQueue = async (playerId: Id<'players'>) => {
+    toast.promise(
+      reAddPlayerToQueue({ auctionId, playerId }),
+      {
+        loading: 'Re-adding player to queue...',
+        success: 'Player re-added to auction queue',
+        error: 'Failed to re-add player to queue'
+      }
+    );
+  };
+
+  // Loading states
+  if (!isUserLoaded || auction === undefined || auctionDashboard === undefined) {
     return (
       <div className="container mx-auto py-8 px-4">
         <div className="flex items-center gap-4 mb-6">
@@ -388,6 +491,20 @@ export default function CurrentAuctionAdminPanel() {
         <AdminBadge />
         <h1 className="text-2xl font-bold mb-4 mt-4">Auction Not Found</h1>
         <p className="text-muted-foreground">The auction you're looking for doesn't exist.</p>
+      </div>
+    );
+  }
+
+  // Authentication check - redirect if not authorized
+  if (isUserLoaded && user && auction.auctioneer !== user.id) {
+    return (
+      <div className="container mx-auto py-8 px-4 text-center">
+        <AdminBadge />
+        <h1 className="text-2xl font-bold mb-4 mt-4 text-red-600">Access Denied</h1>
+        <p className="text-muted-foreground">You are not authorized to access this auction admin panel.</p>
+        <Button onClick={() => router.push('/')} className="mt-4">
+          Return to Homepage
+        </Button>
       </div>
     );
   }
@@ -506,10 +623,11 @@ export default function CurrentAuctionAdminPanel() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <PlayerDisplay playerId={auctionState.currentPlayer._id} />
-                    {isRunning && auctionState.timeRemaining > 0 && (
+                    {auctionState.timeRemaining !== undefined && auctionState.timeRemaining > 0 && (
                       <CountdownTimer
                         timeRemaining={auctionState.timeRemaining}
                         onExtend={handleExtendCountdown}
+                        isRunning={isRunning}
                       />
                     )}
                   </div>
@@ -565,6 +683,15 @@ export default function CurrentAuctionAdminPanel() {
                 </div>
               )}
             </Card>
+
+            {/* Unsold Players Section */}
+            {auctionState?.unsoldPlayers && auctionState.unsoldPlayers.length > 0 && (
+              <UnsoldPlayersSection 
+                unsoldPlayers={auctionState.unsoldPlayers}
+                auctionId={auctionId}
+                onReAddToQueue={handleReAddToQueue}
+              />
+            )}
 
             {/* Bid History */}
             {auctionDashboard?.bidHistory && auctionDashboard.bidHistory.length > 0 && (
