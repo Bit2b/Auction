@@ -102,7 +102,9 @@ export default function AuctionViewPage() {
     }
   };
 
-
+  const handleTeamClick = (teamId: string) => {
+    router.push(`/teams/${teamId}`);
+  };
 
 const handleLiveBidding = () => {
   if (auctionId && userTeamRegistration) {
@@ -388,7 +390,8 @@ const handleLiveBidding = () => {
                     return (
                       <div
                         key={teamId}
-                        className="p-4 bg-muted/30 rounded-lg border border-border/50"
+                        onClick={() => handleTeamClick(teamId)}
+                        className="p-4 bg-muted/30 rounded-lg border border-border/50 cursor-pointer hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
